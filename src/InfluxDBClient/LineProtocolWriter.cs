@@ -8,9 +8,19 @@ namespace InfluxDBClient
 {
     public class LineProtocolWriter
     {
+        private static readonly Dictionary<TimeUnit, double> TimeUnitScale = new Dictionary<TimeUnit, double>
+        {
+            { TimeUnit.Nanosecond, 0.000001 },
+            { TimeUnit.Microsecond, 0.001 },
+            { TimeUnit.Millisecond, 1 },
+            { TimeUnit.Second, 1000 },
+            { TimeUnit.Minute, 60000 },
+            { TimeUnit.Hour, 3600000 },
+        };
         private static readonly Dictionary<Type, Action<StringBuilder, object>> TypeHandlers;
         private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private readonly StringBuilder _builder = new StringBuilder();
+        private readonly double _timeScale;
 
         static LineProtocolWriter()
         {
@@ -30,6 +40,11 @@ namespace InfluxDBClient
                 { typeof(uint), AppendUInt },
                 { typeof(ulong), AppendULong }
             };
+        }
+
+        public LineProtocolWriter(TimeUnit timestampPrecision = TimeUnit.Millisecond)
+        {
+            _timeScale = TimeUnitScale[timestampPrecision];
         }
 
         public void Write(Point point)
@@ -114,32 +129,52 @@ namespace InfluxDBClient
                 _builder.Append(' ');
                 DateTime value = point.Timestamp.Value.ToUniversalTime();
                 TimeSpan timeSpan = value - Epoch;
-                _builder.Append((long)timeSpan.TotalMilliseconds);
+                _builder.Append((long)(timeSpan.TotalMilliseconds / _timeScale));
             }
         }
 
         private static void AppendEscapedMeasurement(StringBuilder builder, string measurement)
         {
-            int index = builder.Length;
-            builder.Append(measurement)
-                   .Replace(",", @"\,", index, builder.Length - index)
-                   .Replace(" ", @"\ ", index, builder.Length - index);
+            for (int i = 0; i < measurement.Length; ++i)
+            {
+                char c = measurement[i];
+                if (c == ',' || c == ' ')
+                {
+                    builder.Append('\\');
+                }
+
+                builder.Append(c);
+            }
         }
 
         private static void AppendEscapedKey(StringBuilder builder, string key)
         {
-            int index = builder.Length;
-            builder.Append(key)
-                   .Replace(",", @"\,", index, builder.Length - index)
-                   .Replace("=", @"\=", index, builder.Length - index)
-                   .Replace(" ", @"\ ", index, builder.Length - index);
+            for (int i = 0; i < key.Length; ++i)
+            {
+                char c = key[i];
+                if (c == ',' || c == '=' || c == ' ')
+                {
+                    builder.Append('\\');
+                }
+
+                builder.Append(c);
+            }
         }
 
         private static void AppendEscapedString(StringBuilder builder, string str)
         {
-            int index = builder.Length;
-            builder.Append(str)
-                   .Replace("\"", @"\\\", index, builder.Length - index);
+            for (int i = 0; i < str.Length; ++i)
+            {
+                char c = str[i];
+                if (c != '\\')
+                {
+                    builder.Append(c);
+                }
+                else
+                {
+                    builder.Append(@"\\");
+                }
+            }
         }
 
         private static void AppendString(StringBuilder builder, object value)
