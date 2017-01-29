@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -11,17 +12,7 @@ namespace InfluxDBClient
 {
     public class InfluxDBHttpClient : Client
     {
-        private static readonly Dictionary<TimeUnit, string> TimeUnitCode = new Dictionary<TimeUnit, string>
-        {
-            { TimeUnit.Nanosecond, "n" },
-            { TimeUnit.Microsecond, "m" },
-            { TimeUnit.Millisecond, "ms" },
-            { TimeUnit.Second, "s" },
-            { TimeUnit.Minute, "m" },
-            { TimeUnit.Hour, "h" }
-        };
         private readonly HttpClient _client = new HttpClient() { Timeout = TimeSpan.FromSeconds(10) };
-        private TimeUnit _timestampPrecision = TimeUnit.Millisecond;
         private Uri _writeUri;
         private ICredentials _credentials;
 
@@ -30,19 +21,14 @@ namespace InfluxDBClient
         public InfluxDBHttpClient(IPAddress server, int port, string database)
             : base(server, port)
         {
-            if (server == null)
-            {
-                throw new ArgumentNullException(nameof(server));
-            }
-
-            if (port < 1 || port > 65535)
-            {
-                throw new ArgumentOutOfRangeException(nameof(port));
-            }
-
             if (database == null)
             {
                 throw new ArgumentNullException(nameof(database));
+            }
+
+            if (string.IsNullOrWhiteSpace(database))
+            {
+                throw new ArgumentException("Database cannot be empty.", nameof(database));
             }
 
             _database = database;
@@ -55,6 +41,16 @@ namespace InfluxDBClient
             get { return _database; }
             set
             {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value), "Database cannot be null");
+                }
+
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    throw new ArgumentException("Database cannot be empty.", nameof(value));
+                }
+
                 if (_database != value)
                 {
                     _database = value;
@@ -76,23 +72,17 @@ namespace InfluxDBClient
             }
         }
 
-        public TimeUnit TimestampPrecision
-        {
-            get { return _timestampPrecision; }
-            set
-            {
-                if (_timestampPrecision != value)
-                {
-                    _timestampPrecision = value;
-                    UpdateUri();
-                }
-            }
-        }
-
         public TimeSpan Timeout
         {
             get { return _client.Timeout; }
             set { _client.Timeout = value; }
+        }
+
+        public async Task<Version> PingAsync()
+        {
+            var response = await _client.GetAsync(new UriBuilder("http", Server.ToString(), Port, "ping").Uri);
+            var versionHeader = response.Headers.First(h => h.Key == "X-Influxdb-Version");
+            return Version.Parse(versionHeader.Value.First());
         }
 
         public override async Task WriteAsync(IEnumerable<Point> points)
@@ -128,10 +118,10 @@ namespace InfluxDBClient
             response.EnsureSuccessStatusCode();
         }
 
-        protected override void OnServerOrPortChanged()
+        protected override void OnClientPropertyChanged()
         {
             UpdateUri();
-            base.OnServerOrPortChanged();
+            base.OnClientPropertyChanged();
         }
 
         protected override void Dispose(bool disposing)

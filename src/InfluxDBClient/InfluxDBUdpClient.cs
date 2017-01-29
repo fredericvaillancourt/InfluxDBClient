@@ -19,7 +19,7 @@ namespace InfluxDBClient
         
         public override Task WriteAsync(IEnumerable<Point> points)
         {
-            LineProtocolWriter writer = new LineProtocolWriter(TimeUnit.Nanosecond);
+            LineProtocolWriter writer = new LineProtocolWriter(TimestampPrecision);
             foreach (var point in points)
             {
                 writer.Write(point);
@@ -39,10 +39,10 @@ namespace InfluxDBClient
             return completionSource.Task;
         }
 
-        protected override void OnServerOrPortChanged()
+        protected override void OnClientPropertyChanged()
         {
             UpdateEndpoint();
-            base.OnServerOrPortChanged();
+            base.OnClientPropertyChanged();
         }
 
         protected override void Dispose(bool disposing)
@@ -57,8 +57,7 @@ namespace InfluxDBClient
 
         private void Completed(object sender, SocketAsyncEventArgs e)
         {
-            var completionSource = e.UserToken as TaskCompletionSource<object>;
-            completionSource.TrySetResult(null);
+            ((TaskCompletionSource<object>)e.UserToken).TrySetResult(null);
         }
 
         private void UpdateEndpoint()

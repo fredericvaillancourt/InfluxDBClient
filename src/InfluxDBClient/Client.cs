@@ -7,8 +7,20 @@ namespace InfluxDBClient
 {
     public abstract class Client : IDisposable
     {
+        protected static readonly IReadOnlyDictionary<TimeUnit, string> TimeUnitCode = new Dictionary<TimeUnit, string>
+        {
+            { TimeUnit.Nanosecond, "n" },
+            { TimeUnit.Microsecond, "m" },
+            { TimeUnit.Millisecond, "ms" },
+            { TimeUnit.Second, "s" },
+            { TimeUnit.Minute, "m" },
+            { TimeUnit.Hour, "h" }
+        };
+
         private IPAddress _server;
         private int _port;
+
+        private TimeUnit _timestampPrecision;
 
         protected Client(IPAddress server, int port)
         {
@@ -37,10 +49,15 @@ namespace InfluxDBClient
             get { return _server; }
             set
             {
-                if (_server != value)
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value), "Server cannot be null");
+                }
+
+                if (!_server.Equals(value))
                 {
                     _server = value;
-                    OnServerOrPortChanged();
+                    OnClientPropertyChanged();
                 }
             }
         }
@@ -50,10 +67,28 @@ namespace InfluxDBClient
             get { return _port; }
             set
             {
+                if (value < 1 || value > 65535)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                }
+
                 if (_port != value)
                 {
                     _port = value;
-                    OnServerOrPortChanged();
+                    OnClientPropertyChanged();
+                }
+            }
+        }
+
+        public TimeUnit TimestampPrecision
+        {
+            get { return _timestampPrecision; }
+            set
+            {
+                if (_timestampPrecision != value)
+                {
+                    _timestampPrecision = value;
+                    OnClientPropertyChanged();
                 }
             }
         }
@@ -65,7 +100,7 @@ namespace InfluxDBClient
 
         public abstract Task WriteAsync(IEnumerable<Point> points);
 
-        protected virtual void OnServerOrPortChanged()
+        protected virtual void OnClientPropertyChanged()
         {
         }
 
